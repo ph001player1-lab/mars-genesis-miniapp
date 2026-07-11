@@ -14,6 +14,16 @@
 
 * { box-sizing: border-box; }
 
+/* The `hidden` attribute must always win over any `display` set by a class
+   (e.g. `.welcome-screen { display: flex }` is reused by both screens).
+   Without `!important` here, author-origin CSS overrides the browser's
+   default `[hidden] { display: none }` rule even with equal specificity,
+   which is exactly why toggling `.hidden = true/false` was silently
+   failing to actually show/hide the screens. */
+[hidden] {
+  display: none !important;
+}
+
 html, body {
   margin: 0;
   padding: 0;
