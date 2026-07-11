@@ -66,6 +66,28 @@ function tgGetUser() {
   return null;
 }
 
+/**
+ * Показывает нативную кнопку "Назад" в шапке Telegram и привязывает к ней обработчик.
+ * Полезно на экранах анкеты, чтобы аппаратная/системная кнопка назад совпадала
+ * с логикой внутри приложения.
+ * @param {() => void} onClick
+ */
+function tgShowBackButton(onClick) {
+  if (!tg || !tg.BackButton) return;
+  tg.BackButton.offClick(onClick);
+  tg.BackButton.onClick(onClick);
+  tg.BackButton.show();
+}
+
+/**
+ * Скрывает нативную кнопку "Назад" (например, на самом первом экране).
+ */
+function tgHideBackButton() {
+  if (tg && tg.BackButton) {
+    tg.BackButton.hide();
+  }
+}
+
 // Публичный интерфейс для остальных скриптов приложения.
 window.MarsTelegram = {
   tg,
@@ -73,4 +95,6 @@ window.MarsTelegram = {
   tgHapticImpact,
   tgHapticNotification,
   tgGetUser,
+  tgShowBackButton,
+  tgHideBackButton,
 };
