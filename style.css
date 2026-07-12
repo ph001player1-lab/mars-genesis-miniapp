@@ -58,7 +58,7 @@ body {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  background: radial-gradient(120% 90% at 50% 110%, rgba(47,169,104,0.28), transparent 60%);
+  background: radial-gradient(120% 90% at 50% 110%, rgba(47,169,104,0.18), transparent 60%);
   z-index: 1;
 }
 
@@ -72,21 +72,9 @@ body {
 }
 
 .hexgrid__cells polygon {
-  fill: rgba(47,169,104,0.05);
-  stroke: rgba(127,227,163,0.16);
+  fill: rgba(47,169,104,0.03);
+  stroke: rgba(127,227,163,0.09);
   stroke-width: 1;
-}
-
-.hexgrid__node {
-  fill: var(--emerald-bright);
-  opacity: 0.8;
-}
-
-.hexgrid__label {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: 0.04em;
-  fill: rgba(234,247,238,0.4);
 }
 
 /* ---------- layout ---------- */
@@ -830,6 +818,17 @@ body {
   text-align: left;
 }
 
+.dashboard__card--clickable {
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.dashboard__card--clickable:active {
+  transform: scale(0.98);
+  border-color: rgba(127, 227, 163, 0.45);
+}
+
 .dashboard__card-value {
   font-size: 26px;
   font-weight: 700;
@@ -849,6 +848,9 @@ body {
   width: 100%;
   text-align: left;
   margin-bottom: 26px;
+  max-height: 260px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .dashboard__recent-title {
@@ -862,14 +864,26 @@ body {
 
 .dashboard__recent-item {
   font-size: 13.5px;
-  padding: 8px 0;
+  padding: 10px 4px;
   border-top: 1px solid rgba(234, 247, 238, 0.07);
   display: flex;
   justify-content: space-between;
+  gap: 10px;
 }
 
 .dashboard__recent-item:first-of-type {
   border-top: none;
+}
+
+.dashboard__recent-item--clickable {
+  cursor: pointer;
+  touch-action: manipulation;
+  border-radius: 10px;
+  transition: background 0.15s ease;
+}
+
+.dashboard__recent-item--clickable:active {
+  background: rgba(47, 169, 104, 0.1);
 }
 
 .dashboard__note {
