@@ -24,7 +24,7 @@
 // Пока строка пустая — приложение работает в демо-режиме: проверка занятости
 // конфигурации/названия и сохранение в таблицу отключены, дашборд показывает
 // заглушку с пояснением.
-const CITY_REGISTRY_ENDPOINT = '';
+const CITY_REGISTRY_ENDPOINT = 'https://script.google.com/macros/s/AKfycbxWhomqvr5LFtU7i35X3SL3Pk2oGfdSQtYybo2mHh4sQ1b4sKeMcpMjMQ9EbA0rFygVFw/exec';
 
 const TOTAL_CONFIGURATIONS = 30240; // 5 × 4 × 6 × 6 × 6 × 7 — см. книгу
 
