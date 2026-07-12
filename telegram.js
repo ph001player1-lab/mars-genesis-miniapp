@@ -1,15 +1,44 @@
 /**
  * telegram.js
  * Инициализация и обёртка над Telegram WebApp SDK.
- * Изолирует всё взаимодействие с window.Telegram.WebApp,
- * чтобы app.js работал с простым и предсказуемым API.
+ *
+ * Все вызовы SDK обёрнуты в try/catch: на некоторых версиях Telegram
+ * (особенно старые мобильные клиенты) часть методов может отсутствовать
+ * или вести себя иначе, и без защиты один упавший вызов мог бы оборвать
+ * остальной код обработчика клика — именно так выглядел баг "кнопки не
+ * реагируют только в мобильном Telegram, а в браузере всё работает".
  */
 
 const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
 
+function safeCall(fn, label) {
+  try {
+    return fn();
+  } catch (err) {
+    console.warn(`[telegram.js] "${label}" не выполнился:`, err);
+    return null;
+  }
+}
+
+/**
+ * Синхронизирует CSS-переменную --tg-viewport-height с реальной видимой
+ * высотой Mini App внутри Telegram. На телефоне 100vh/100dvh не всегда
+ * совпадает с фактически видимой областью (out есть собственная шапка,
+ * может быть открыта не полностью и т.д.), из-за чего нижние элементы
+ * могут оказаться вне видимой зоны. Обновляется и при первом запуске,
+ * и при любом изменении (тема, клавиатура, разворот).
+ */
+function syncViewportHeight() {
+  if (!tg) return;
+  const height = tg.viewportStableHeight || tg.viewportHeight;
+  if (height) {
+    document.documentElement.style.setProperty('--tg-viewport-height', `${height}px`);
+  }
+}
+
 /**
  * Инициализирует Mini App: сообщает Telegram, что приложение готово,
- * разворачивает окно на весь экран и подстраивает цвета под тему клиента.
+ * разворачивает окно на весь экран и подстраивает вьюпорт/цвета.
  */
 function initTelegram() {
   if (!tg) {
@@ -18,20 +47,13 @@ function initTelegram() {
     return;
   }
 
-  tg.ready();
-  tg.expand();
+  safeCall(() => tg.ready(), 'ready');
+  safeCall(() => tg.expand(), 'expand');
+  safeCall(() => tg.setHeaderColor('#0A1410'), 'setHeaderColor');
+  safeCall(() => tg.setBackgroundColor('#0A1410'), 'setBackgroundColor');
 
-  if (typeof tg.disableVerticalSwipes === 'function') {
-    tg.disableVerticalSwipes();
-  }
-
-  // Подгоняем фон Mini App под фон нашего экрана, чтобы не было "мигания" по краям.
-  if (typeof tg.setHeaderColor === 'function') {
-    try { tg.setHeaderColor('#120B08'); } catch (e) { /* некоторые клиенты принимают только ключевые слова */ }
-  }
-  if (typeof tg.setBackgroundColor === 'function') {
-    try { tg.setBackgroundColor('#120B08'); } catch (e) { /* no-op */ }
-  }
+  syncViewportHeight();
+  safeCall(() => tg.onEvent('viewportChanged', syncViewportHeight), 'onEvent:viewportChanged');
 
   document.body.classList.add('in-telegram');
 }
@@ -41,9 +63,8 @@ function initTelegram() {
  * @param {'light'|'medium'|'heavy'|'rigid'|'soft'} style
  */
 function tgHapticImpact(style) {
-  if (tg && tg.HapticFeedback) {
-    tg.HapticFeedback.impactOccurred(style || 'medium');
-  }
+  if (!tg || !tg.HapticFeedback) return;
+  safeCall(() => tg.HapticFeedback.impactOccurred(style || 'medium'), 'HapticFeedback.impactOccurred');
 }
 
 /**
@@ -51,9 +72,8 @@ function tgHapticImpact(style) {
  * @param {'error'|'success'|'warning'} type
  */
 function tgHapticNotification(type) {
-  if (tg && tg.HapticFeedback) {
-    tg.HapticFeedback.notificationOccurred(type || 'success');
-  }
+  if (!tg || !tg.HapticFeedback) return;
+  safeCall(() => tg.HapticFeedback.notificationOccurred(type || 'success'), 'HapticFeedback.notificationOccurred');
 }
 
 /**
@@ -67,25 +87,37 @@ function tgGetUser() {
 }
 
 /**
- * Показывает нативную кнопку "Назад" в шапке Telegram и привязывает к ней обработчик.
- * Полезно на экранах анкеты, чтобы аппаратная/системная кнопка назад совпадала
- * с логикой внутри приложения.
+ * Показывает нативную кнопку "Назад" в шапке Telegram.
  * @param {() => void} onClick
  */
 function tgShowBackButton(onClick) {
   if (!tg || !tg.BackButton) return;
-  tg.BackButton.offClick(onClick);
-  tg.BackButton.onClick(onClick);
-  tg.BackButton.show();
+  safeCall(() => tg.BackButton.offClick(onClick), 'BackButton.offClick');
+  safeCall(() => tg.BackButton.onClick(onClick), 'BackButton.onClick');
+  safeCall(() => tg.BackButton.show(), 'BackButton.show');
 }
 
 /**
- * Скрывает нативную кнопку "Назад" (например, на самом первом экране).
+ * Скрывает нативную кнопку "Назад".
  */
 function tgHideBackButton() {
-  if (tg && tg.BackButton) {
-    tg.BackButton.hide();
+  if (!tg || !tg.BackButton) return;
+  safeCall(() => tg.BackButton.hide(), 'BackButton.hide');
+}
+
+/**
+ * Открывает ссылку на t.me (инвайт, чат, диалог с пользователем) — внутри
+ * Telegram это нужно делать через openTelegramLink, а не обычный переход,
+ * иначе клиент может просто проигнорировать клик. Вне Telegram — обычный
+ * window.open как для любой ссылки.
+ * @param {string} url
+ */
+function tgOpenTelegramLink(url) {
+  if (tg && typeof tg.openTelegramLink === 'function') {
+    const ok = safeCall(() => { tg.openTelegramLink(url); return true; }, 'openTelegramLink');
+    if (ok) return;
   }
+  window.open(url, '_blank', 'noopener');
 }
 
 // Публичный интерфейс для остальных скриптов приложения.
@@ -97,4 +129,5 @@ window.MarsTelegram = {
   tgGetUser,
   tgShowBackButton,
   tgHideBackButton,
+  tgOpenTelegramLink,
 };
