@@ -16,14 +16,13 @@
  */
 
 /* ======================================================================
- * 0. НАСТРОЙКА РЕЕСТРА (заполнить после деплоя Google Apps Script)
+ * 0. НАСТРОЙКА РЕЕСТРА
  * ==================================================================== */
 
-// Вставьте сюда URL вашего развёрнутого Web App из Apps Script
-// (Deploy → New deployment → Web app → Execute as: me → Who has access: Anyone).
-// Пока строка пустая — приложение работает в демо-режиме: проверка занятости
-// конфигурации/названия и сохранение в таблицу отключены, дашборд показывает
-// заглушку с пояснением.
+// URL вашего развёрнутого Web App из Apps Script (уже подключено и работает
+// на реальных данных). Если когда-нибудь будете разворачивать скрипт заново
+// НЕ через "Управление развёртываниями → новая версия", а через полностью
+// новое развёртывание — URL изменится, тогда обновите его здесь.
 const CITY_REGISTRY_ENDPOINT = 'https://script.google.com/macros/s/AKfycbwaxCdCZ_3fyzg7qNRKDSHRrQS-vZTrharZekzt1439pf-8vLJNz9NdCw1UWDrnrDF3mQ/exec';
 
 const TOTAL_CONFIGURATIONS = 30240; // 5 × 4 × 6 × 6 × 6 × 7 — см. книгу
@@ -93,7 +92,7 @@ const QUESTIONS = [
       { value: 'employee', label: 'Наёмный работник' },
       { value: 'investor', label: 'Инвестор' },
       { value: 'freelancer', label: 'Фрилансер' },
-      { value: 'capital', label: 'Накопление капитала' },
+      { value: 'cooperative', label: 'Кооперативная экономика' },
       {
         value: 'ubi',
         label: 'Безусловный базовый доход',
@@ -136,7 +135,7 @@ const CONFIG_CODES = {
   intimacy: { monogamy: 'MNG', polyamory: 'PLY', free: 'FRE', asexual: 'ASX' },
   lifestyle: { solo: 'SOL', patriarchal: 'PAT', matriarchal: 'MAT', partnership: 'PRT', commune: 'COM', guest_marriage: 'GST' },
   society: { liberalism: 'LIB', socialism: 'SOC', conservatism: 'CNS', communism: 'CMM', anarchism: 'ANA', authoritarianism: 'AUT' },
-  economy: { entrepreneur: 'ENT', employee: 'EMP', investor: 'INV', freelancer: 'FRL', capital: 'CAP', ubi: 'UBI' },
+  economy: { entrepreneur: 'ENT', employee: 'EMP', investor: 'INV', freelancer: 'FRL', cooperative: 'COO', ubi: 'UBI' },
   worldview: { christianity: 'CHR', islam: 'ISL', buddhism: 'BUD', judaism: 'JUD', materialism: 'SCI', agnosticism: 'AGN', esoteric: 'ESO' },
 };
 
@@ -166,6 +165,16 @@ let navRow;
 let navBackBtn;
 let navNextBtn;
 
+// Профиль текущего Telegram-пользователя (личный кабинет). Заполняется
+// асинхронно при загрузке, если удаётся определить Telegram ID — до этого
+// момента (и если ID определить не удалось, например при открытии вне
+// Telegram) кнопка на приветственном экране ведёт в обычную анкету.
+const myProfileState = {
+  checked: false,
+  activeCity: null,
+  pastCities: [],
+};
+
 document.addEventListener('DOMContentLoaded', () => {
   window.MarsTelegram.initTelegram();
 
@@ -183,13 +192,51 @@ document.addEventListener('DOMContentLoaded', () => {
   navBackBtn.addEventListener('click', goBack);
   navNextBtn.addEventListener('click', goNext);
 
-  document.getElementById('start-btn').addEventListener('click', handleStartColonization);
-  document.getElementById('dashboard-link').addEventListener('click', openDashboardFromWelcome);
-  document.getElementById('book-link').addEventListener('click', () => {
-    window.MarsTelegram.tgHapticImpact('light');
-    window.MarsTelegram.tgOpenTelegramLink(BOOK_URL);
+  // Один обработчик на кнопку — ветвится по тому, есть ли уже активный
+  // город у этого Telegram-пользователя (личный кабинет) или нет (анкета).
+  document.getElementById('start-btn').addEventListener('click', () => {
+    if (myProfileState.activeCity) {
+      handleOpenMyProfile();
+    } else {
+      handleStartColonization();
+    }
   });
+  document.getElementById('dashboard-link').addEventListener('click', openDashboardFromWelcome);
+  document.getElementById('book-link').addEventListener('click', openAboutFromWelcome);
+
+  loadMyProfileOnLoad();
 });
+
+/**
+ * При запуске мини-аппа тихо проверяем (не блокируя интерфейс), есть ли у
+ * этого Telegram-пользователя уже активный город. Если да — превращаем
+ * главную кнопку в "Мой кабинет" вместо "Настроить свой город".
+ */
+function loadMyProfileOnLoad() {
+  const user = window.MarsTelegram.tgGetUser();
+  if (!user || !user.id) return; // вне Telegram или ID недоступен — обычное поведение
+
+  fetchMyProfile(String(user.id))
+    .then((res) => {
+      if (!res || !res.ok) return;
+      myProfileState.checked = true;
+      myProfileState.activeCity = res.activeCity || null;
+      myProfileState.pastCities = res.pastCities || [];
+
+      if (myProfileState.activeCity) {
+        const startBtn = document.getElementById('start-btn');
+        startBtn.querySelector('.start-btn__label').textContent = `Мой кабинет · ${myProfileState.activeCity.name}`;
+      }
+    })
+    .catch(() => {
+      // молча оставляем поведение по умолчанию (обычная анкета)
+    });
+}
+
+function fetchMyProfile(telegramId) {
+  if (!CITY_REGISTRY_ENDPOINT) return Promise.resolve(null);
+  return fetch(`${CITY_REGISTRY_ENDPOINT}?action=myProfile&telegramId=${encodeURIComponent(telegramId)}`).then((r) => r.json());
+}
 
 /* ======================================================================
  * 4. Переход welcome → анкета / дашборд
@@ -221,6 +268,69 @@ function openDashboardFromWelcome() {
   requestAnimationFrame(() => {
     appScreen.classList.add('is-visible');
     renderDashboard({ fromWelcome: true });
+  });
+}
+
+function openAboutFromWelcome() {
+  window.MarsTelegram.tgHapticImpact('light');
+
+  welcomeScreen.hidden = true;
+  appScreen.hidden = false;
+  navRow.hidden = true;
+  requestAnimationFrame(() => {
+    appScreen.classList.add('is-visible');
+    renderAboutProject();
+  });
+}
+
+function renderAboutProject() {
+  const html = `
+    <div class="config-summary" style="text-align:left;">
+      <h2 class="dashboard__title" style="margin-bottom:14px;">Mars &amp; Earth Genesis</h2>
+      <p class="question-prompt" style="margin-bottom:16px;font-size:13.5px;color:var(--paper);">Найдите своих единомышленников за одну минуту.</p>
+
+      <p class="question-prompt">Mars &amp; Earth Genesis — это эксперимент по поиску людей с близкими ценностями. Вы отвечаете на несколько простых вопросов и сразу попадаете в виртуальный город, жители которого разделяют ваши взгляды на жизнь.</p>
+
+      <p class="question-prompt" style="margin-bottom:6px;color:var(--paper);font-weight:600;">Зачем это нужно?</p>
+      <p class="question-prompt">
+        • находить друзей и единомышленников;<br/>
+        • расширять круг полезных знакомств;<br/>
+        • создавать коммерческие и некоммерческие проекты с людьми, которым не нужно долго объяснять свои принципы.
+      </p>
+
+      <p class="question-prompt">Каждый город развивается по двум показателям:</p>
+      <p class="question-prompt">
+        <strong style="color:var(--paper);">ВВП</strong> — суммарная ценность коммерческих проектов, созданных жителями города.<br/><br/>
+        <strong style="color:var(--paper);">DCL</strong> — количество человеко-дней, проведённых в добровольных, взаимовыгодных и законных проектах. Этот показатель отражает уровень сотрудничества и доверия внутри сообщества.
+      </p>
+
+      <p class="question-prompt">Города соревнуются не за количество жителей, а за качество взаимодействия и способность создавать реальные результаты.</p>
+
+      <p class="question-prompt">Это первый практический шаг к модели цивилизации I типа по шкале Кардашова — миру, в котором люди объединяются не по случайности рождения или месту проживания, а по общим ценностям, совместным целям и добровольному сотрудничеству.</p>
+
+      <p class="question-prompt" style="margin-bottom:0;">Автор проекта: Николай Владимирович Буленков.</p>
+    </div>
+
+    <div class="result-actions">
+      <button type="button" class="action-btn action-btn--primary" id="btn-about-book">
+        📖 Архитектура цивилизации I типа
+      </button>
+      <button type="button" class="action-btn action-btn--secondary" id="btn-about-back">← Назад</button>
+    </div>
+  `;
+
+  transitionScreen(html, 'forward', () => {
+    window.MarsTelegram.tgHideBackButton();
+
+    document.getElementById('btn-about-book').addEventListener('click', () => {
+      window.MarsTelegram.tgHapticImpact('medium');
+      window.MarsTelegram.tgOpenTelegramLink(BOOK_URL);
+    });
+
+    document.getElementById('btn-about-back').addEventListener('click', () => {
+      window.MarsTelegram.tgHapticImpact('light');
+      returnToWelcome();
+    });
   });
 }
 
@@ -416,6 +526,12 @@ function renderJoinExisting(code, cityName, citizens) {
       Отдельный город с такой же конфигурацией не создаётся — присоединяйтесь к «${escapeHtml(cityName)}».
     </p>
 
+    ${myProfileState.activeCity && myProfileState.activeCity.code !== code ? `
+      <p class="city-form__error" style="color:var(--mist);margin-bottom:22px;">
+        ⚠️ Вы сейчас числитесь в городе «${escapeHtml(myProfileState.activeCity.name)}» — при присоединении сюда та запись станет неактивной.
+      </p>
+    ` : ''}
+
     <div class="result-actions">
       <button type="button" class="action-btn action-btn--primary" id="btn-join-city">
         Присоединиться к городу «${escapeHtml(cityName)}»
@@ -440,6 +556,7 @@ function renderJoinExisting(code, cityName, citizens) {
           if (res.ok) {
             window.MarsTelegram.tgHapticNotification('success');
             state.cityName = res.city;
+            updateMyProfileAfterCityChange(res.city, code, res.citizenNumber, res.chat);
             renderResult(res.city, res.citizenNumber, res.totalCities, code);
           } else {
             window.MarsTelegram.tgHapticNotification('error');
@@ -507,6 +624,12 @@ function renderCityForm(errorMessage) {
       ${summaryRows}
     </div>
 
+    ${myProfileState.activeCity ? `
+      <p class="city-form__error" style="color:var(--mist);margin-bottom:14px;">
+        ⚠️ Вы сейчас числитесь в городе «${escapeHtml(myProfileState.activeCity.name)}» — при создании нового города та запись станет неактивной.
+      </p>
+    ` : ''}
+
     <div class="city-form">
       <label class="city-form__label" for="city-name-input">Придумайте название своего города</label>
       <input
@@ -559,6 +682,7 @@ function handleCitySubmit(input, submitBtn) {
       if (res.ok) {
         window.MarsTelegram.tgHapticNotification('success');
         state.cityName = res.city;
+        updateMyProfileAfterCityChange(res.city, state.configCode, res.citizenNumber, res.chat);
         renderResult(res.city, res.citizenNumber, res.totalCities, state.configCode);
       } else if (res.error === 'name_taken') {
         window.MarsTelegram.tgHapticNotification('error');
@@ -736,6 +860,203 @@ function renderResult(cityName, citizenNumber, totalCities, code) {
 }
 
 /* ======================================================================
+ * 9b. Личный кабинет — текущий город + история прошлых городов
+ * ==================================================================== */
+
+function handleOpenMyProfile() {
+  window.MarsTelegram.tgHapticImpact('light');
+
+  welcomeScreen.hidden = true;
+  appScreen.hidden = false;
+  navRow.hidden = true;
+  requestAnimationFrame(() => {
+    appScreen.classList.add('is-visible');
+    renderMyProfileLoading();
+  });
+}
+
+function renderMyProfileLoading() {
+  transitionScreen(`
+    <div class="analyzing">
+      <p class="analyzing__text">Загружаем ваш кабинет<span class="analyzing__dots" aria-hidden="true"></span></p>
+    </div>
+  `, 'forward', () => {
+    const user = window.MarsTelegram.tgGetUser();
+    if (!user || !user.id) {
+      renderMyProfile({ activeCity: myProfileState.activeCity, pastCities: myProfileState.pastCities });
+      return;
+    }
+    fetchMyProfile(String(user.id))
+      .then((res) => {
+        if (res && res.ok) {
+          myProfileState.activeCity = res.activeCity || null;
+          myProfileState.pastCities = res.pastCities || [];
+        }
+        renderMyProfile({ activeCity: myProfileState.activeCity, pastCities: myProfileState.pastCities });
+      })
+      .catch(() => {
+        renderMyProfile({ activeCity: myProfileState.activeCity, pastCities: myProfileState.pastCities });
+      });
+  });
+}
+
+function renderMyProfile(profile) {
+  const active = profile.activeCity;
+  const past = profile.pastCities || [];
+
+  const activeBlock = active
+    ? `
+      <div class="config-summary">
+        <div class="config-summary__title">Ваш текущий город</div>
+        <div class="config-summary__row">
+          <span class="config-summary__row-label">Город</span>
+          <span class="config-summary__row-value">${escapeHtml(active.name)}</span>
+        </div>
+        <div class="config-summary__row">
+          <span class="config-summary__row-label">Код</span>
+          <span class="config-summary__row-value">${escapeHtml(active.code)}</span>
+        </div>
+        <div class="config-summary__row">
+          <span class="config-summary__row-label">Жителей</span>
+          <span class="config-summary__row-value">${active.citizens != null ? active.citizens : '—'}</span>
+        </div>
+      </div>
+    `
+    : `<p class="subtext result-subtext">У вас пока нет активного города.</p>`;
+
+  const pastBlock = past.length
+    ? `
+      <div class="dashboard__recent">
+        <div class="dashboard__recent-title">Города, где вы были раньше</div>
+        ${past.map((c) => `
+          <div class="dashboard__recent-item" data-chat="${escapeHtml(c.chat || '')}" data-name="${escapeHtml(c.name)}">
+            <span>${escapeHtml(c.name)} <span style="color:var(--mist);font-family:var(--font-mono);font-size:11px;">${escapeHtml(c.code)}</span></span>
+            <span class="profile-past-chat-btn" style="color:var(--emerald-bright);cursor:pointer;">${c.chat ? 'Чат →' : 'без чата'}</span>
+          </div>
+        `).join('')}
+      </div>
+    `
+    : '';
+
+  const html = `
+    ${activeBlock}
+
+    <div class="result-actions">
+      <button type="button" class="action-btn action-btn--primary" id="btn-civ-chat-profile">
+        🌐 Чат цивилизации симбиотов
+      </button>
+      ${active ? `
+        <button type="button" class="action-btn action-btn--secondary" id="btn-city-chat-profile">
+          💬 Чат моего города
+        </button>
+      ` : ''}
+      <button type="button" class="action-btn action-btn--secondary" id="btn-change-city-profile">
+        🔄 ${active ? 'Сменить город' : 'Настроить город'}
+      </button>
+      <button type="button" class="action-btn action-btn--ghost" id="btn-view-dashboard-profile">
+        📊 Посмотреть дашборд цивилизации
+      </button>
+      <button type="button" class="action-btn action-btn--ghost" id="btn-view-book-profile">
+        📖 Архитектура Цивилизации I типа
+      </button>
+    </div>
+
+    ${pastBlock}
+
+    <button type="button" class="action-btn action-btn--secondary" id="btn-profile-back">← На главный экран</button>
+  `;
+
+  transitionScreen(html, 'forward', () => {
+    window.MarsTelegram.tgHideBackButton();
+
+    document.getElementById('btn-civ-chat-profile').addEventListener('click', () => {
+      window.MarsTelegram.tgHapticImpact('medium');
+      window.MarsTelegram.tgOpenTelegramLink(CIVILIZATION_CHAT_URL);
+    });
+
+    const cityChatBtn = document.getElementById('btn-city-chat-profile');
+    if (cityChatBtn && active) {
+      cityChatBtn.addEventListener('click', () => {
+        window.MarsTelegram.tgHapticImpact('medium');
+        if (active.chat) {
+          window.MarsTelegram.tgOpenTelegramLink(active.chat);
+        } else {
+          const user = window.MarsTelegram.tgGetUser();
+          const who = user
+            ? (user.username ? `@${user.username}` : [user.first_name, user.last_name].filter(Boolean).join(' ')) + (user.id ? ` (id: ${user.id})` : '')
+            : 'аноним';
+          const text = `Привет! Уточняю чат моего города «${active.name}» (${active.code}). Пользователь: ${who}.`;
+          window.MarsTelegram.tgOpenTelegramLink(`https://t.me/${REGISTRY_OWNER_USERNAME}?text=${encodeURIComponent(text)}`);
+        }
+      });
+    }
+
+    document.getElementById('btn-change-city-profile').addEventListener('click', () => {
+      window.MarsTelegram.tgHapticImpact('light');
+      state.answers = {};
+      state.cityName = null;
+      state.configCode = null;
+      navRow.hidden = false;
+      renderQuestion(0, 'forward');
+    });
+
+    document.getElementById('btn-view-dashboard-profile').addEventListener('click', () => {
+      window.MarsTelegram.tgHapticImpact('light');
+      renderDashboard({ fromWelcome: false, fromProfile: true });
+    });
+
+    document.getElementById('btn-view-book-profile').addEventListener('click', () => {
+      window.MarsTelegram.tgHapticImpact('light');
+      window.MarsTelegram.tgOpenTelegramLink(BOOK_URL);
+    });
+
+    document.getElementById('btn-profile-back').addEventListener('click', () => {
+      window.MarsTelegram.tgHapticImpact('light');
+      returnToWelcome();
+    });
+
+    appScreenContent.querySelectorAll('.profile-past-chat-btn').forEach((el) => {
+      el.addEventListener('click', () => {
+        const row = el.closest('.dashboard__recent-item');
+        const chat = row.dataset.chat;
+        const name = row.dataset.name;
+        window.MarsTelegram.tgHapticImpact('light');
+        if (chat) {
+          window.MarsTelegram.tgOpenTelegramLink(chat);
+        } else {
+          const user = window.MarsTelegram.tgGetUser();
+          const who = user
+            ? (user.username ? `@${user.username}` : [user.first_name, user.last_name].filter(Boolean).join(' '))
+            : 'аноним';
+          const text = `Привет! Уточняю чат города «${name}», в котором я раньше состоял(а). Пользователь: ${who}.`;
+          window.MarsTelegram.tgOpenTelegramLink(`https://t.me/${REGISTRY_OWNER_USERNAME}?text=${encodeURIComponent(text)}`);
+        }
+      });
+    });
+  });
+}
+
+/**
+ * Вызывается после успешной регистрации/присоединения — обновляет кэш
+ * личного кабинета, чтобы кнопка на приветственном экране сразу отражала
+ * новый текущий город при возврате назад.
+ */
+function updateMyProfileAfterCityChange(cityName, code, citizens, chat) {
+  if (myProfileState.activeCity) {
+    myProfileState.pastCities = [
+      { name: myProfileState.activeCity.name, code: myProfileState.activeCity.code, chat: myProfileState.activeCity.chat || '' },
+      ...myProfileState.pastCities,
+    ];
+  }
+  myProfileState.activeCity = { name: cityName, code: code, citizens: citizens, chat: chat || '' };
+
+  const startBtn = document.getElementById('start-btn');
+  if (startBtn) {
+    startBtn.querySelector('.start-btn__label').textContent = `Мой кабинет · ${cityName}`;
+  }
+}
+
+/* ======================================================================
  * 10. Дашборд цивилизации
  * ==================================================================== */
 
@@ -760,10 +1081,15 @@ function renderDashboard(opts) {
 
       <div class="dashboard__recent">
         <div class="dashboard__recent-title">Все города · рейтинг по числу жителей</div>
+        <div class="dashboard__table-head">
+          <span>Город</span><span>Жит.</span><span>ВВП $</span><span>DCL</span>
+        </div>
         <div id="dash-city-list">
           <div class="dashboard__recent-item"><span>Загрузка…</span></div>
         </div>
       </div>
+
+      <div id="dash-admin-panel"></div>
 
       <p class="dashboard__note" id="dash-note"></p>
 
@@ -804,6 +1130,7 @@ function loadDashboardStats(opts) {
   const citizensEl = document.getElementById('dash-citizens');
   const topCityEl = document.getElementById('dash-top-city');
   const listEl = document.getElementById('dash-city-list');
+  const adminEl = document.getElementById('dash-admin-panel');
   const noteEl = document.getElementById('dash-note');
 
   if (!CITY_REGISTRY_ENDPOINT) {
@@ -815,7 +1142,10 @@ function loadDashboardStats(opts) {
     return;
   }
 
-  fetch(`${CITY_REGISTRY_ENDPOINT}?action=stats`)
+  const user = window.MarsTelegram.tgGetUser();
+  const telegramId = user && user.id ? String(user.id) : '';
+
+  fetch(`${CITY_REGISTRY_ENDPOINT}?action=stats&telegramId=${encodeURIComponent(telegramId)}`)
     .then((r) => r.json())
     .then((data) => {
       if (!data || !data.ok) throw new Error('bad response');
@@ -832,7 +1162,7 @@ function loadDashboardStats(opts) {
           <div class="dashboard__card dashboard__card--clickable" id="dash-top-city-card" style="margin-bottom:22px;">
             <div class="dashboard__card-label" style="margin-bottom:8px;">🏆 Самый населённый город</div>
             <div class="dashboard__card-value" style="font-size:18px;margin-bottom:4px;">${escapeHtml(top.name)}</div>
-            <div class="dashboard__card-label">${escapeHtml(top.code || '')} · ${top.citizens || 0} жит.</div>
+            <div class="dashboard__card-label">${escapeHtml(top.code || '')} · ${top.citizens || 0} жит. · ВВП $${top.gdp || 0} · DCL ${top.dcl || 0}</div>
           </div>
         `;
         document.getElementById('dash-top-city-card').addEventListener('click', () => renderCityDetail(top, opts));
@@ -842,9 +1172,11 @@ function loadDashboardStats(opts) {
 
       listEl.innerHTML = cities.length
         ? cities.map((c) => `
-            <div class="dashboard__recent-item dashboard__recent-item--clickable" data-code="${escapeHtml(c.code)}">
-              <span>${escapeHtml(c.name)} <span style="color:var(--mist);font-family:var(--font-mono);font-size:11px;">${escapeHtml(c.code)}</span></span>
-              <span>${c.citizens || 0} жит.</span>
+            <div class="dashboard__recent-item dashboard__recent-item--clickable dashboard__table-row" data-code="${escapeHtml(c.code)}">
+              <span>${escapeHtml(c.name)}${c.mayor ? '' : ' <span title="Нет мэра">👑✕</span>'}</span>
+              <span>${c.citizens || 0}</span>
+              <span>$${c.gdp || 0}</span>
+              <span>${c.dcl || 0}</span>
             </div>
           `).join('')
         : '<div class="dashboard__recent-item"><span>Городов пока нет</span></div>';
@@ -857,6 +1189,8 @@ function loadDashboardStats(opts) {
         });
       });
 
+      renderAdminPanel(adminEl, data, opts);
+
       noteEl.textContent = '';
     })
     .catch(() => {
@@ -866,6 +1200,49 @@ function loadDashboardStats(opts) {
       listEl.innerHTML = '<div class="dashboard__recent-item"><span>Не удалось загрузить данные</span></div>';
       noteEl.textContent = 'Проверьте подключение или корректность CITY_REGISTRY_ENDPOINT.';
     });
+}
+
+/**
+ * Панель архитектора: видна ТОЛЬКО если сервер вернул admin-поля (что
+ * происходит только когда telegramId запроса совпадает с ARCHITECT_TELEGRAM_ID
+ * на стороне Code.gs — проверка прав делается на бэкенде, а не в этом коде,
+ * здесь только рендер того, что реально пришло).
+ */
+function renderAdminPanel(container, data, opts) {
+  if (!data.admin) {
+    container.innerHTML = '';
+    return;
+  }
+
+  const queue = Array.isArray(data.admin.queue) ? data.admin.queue : [];
+
+  container.innerHTML = `
+    <div class="dashboard__admin">
+      <div class="dashboard__recent-title">🔐 Панель архитектора</div>
+      <div class="dashboard__grid" style="margin-bottom:18px;">
+        <div class="dashboard__card">
+          <div class="dashboard__card-value">${data.admin.noChatCount ?? 0}</div>
+          <div class="dashboard__card-label">Без чата (в очереди)</div>
+        </div>
+        <div class="dashboard__card">
+          <div class="dashboard__card-value">${data.admin.noMayorCount ?? 0}</div>
+          <div class="dashboard__card-label">Без мэра</div>
+        </div>
+      </div>
+
+      <div class="dashboard__recent-title">Очередь на регистрацию (создание чата)</div>
+      <div id="dash-queue-list">
+        ${queue.length
+          ? queue.map((c) => `
+              <div class="dashboard__recent-item">
+                <span>${escapeHtml(c.name)} <span style="color:var(--mist);font-family:var(--font-mono);font-size:11px;">${escapeHtml(c.code)}</span></span>
+                <span>${c.citizens || 0} жит.</span>
+              </div>
+            `).join('')
+          : '<div class="dashboard__recent-item"><span>Очередь пуста</span></div>'}
+      </div>
+    </div>
+  `;
 }
 
 /**
@@ -891,6 +1268,24 @@ function renderCityDetail(city, dashboardOpts) {
         <span class="config-summary__row-label">Жителей</span>
         <span class="config-summary__row-value">${city.citizens || 0}</span>
       </div>
+      <div class="config-summary__row">
+        <span class="config-summary__row-label">ВВП</span>
+        <span class="config-summary__row-value">$${city.gdp || 0}</span>
+      </div>
+      <div class="config-summary__row">
+        <span class="config-summary__row-label">DCL (чел.-дней)</span>
+        <span class="config-summary__row-value">${city.dcl || 0}</span>
+      </div>
+      <div class="config-summary__row">
+        <span class="config-summary__row-label">Мэр</span>
+        <span class="config-summary__row-value">${city.mayor ? escapeHtml(city.mayor) : '— нет мэра —'}</span>
+      </div>
+      ${city.chat ? `
+      <div class="config-summary__row">
+        <span class="config-summary__row-label">Чат</span>
+        <span class="config-summary__row-value"><a href="#" id="city-detail-chat-link" style="color:var(--emerald-bright);">Открыть →</a></span>
+      </div>
+      ` : ''}
     </div>
 
     <div class="result-actions">
@@ -904,6 +1299,15 @@ function renderCityDetail(city, dashboardOpts) {
   `;
 
   transitionScreen(html, 'forward', () => {
+    const chatLink = document.getElementById('city-detail-chat-link');
+    if (chatLink) {
+      chatLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        window.MarsTelegram.tgHapticImpact('light');
+        window.MarsTelegram.tgOpenTelegramLink(city.chat);
+      });
+    }
+
     document.getElementById('btn-join-from-dashboard').addEventListener('click', (e) => {
       const btn = e.currentTarget;
       btn.disabled = true;
@@ -916,6 +1320,7 @@ function renderCityDetail(city, dashboardOpts) {
             window.MarsTelegram.tgHapticNotification('success');
             state.cityName = res.city;
             state.configCode = city.code;
+            updateMyProfileAfterCityChange(res.city, city.code, res.citizenNumber, res.chat || city.chat);
             renderResult(res.city, res.citizenNumber, res.totalCities, city.code);
           } else {
             window.MarsTelegram.tgHapticNotification('error');

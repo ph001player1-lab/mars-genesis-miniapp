@@ -243,21 +243,13 @@ body {
   transition: transform 0.2s ease;
 }
 
-.dashboard-link {
+.welcome-secondary-actions {
+  width: 100%;
+  max-width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   margin-top: 18px;
-  border: none;
-  background: transparent;
-  color: var(--mist);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  letter-spacing: 0.04em;
-  cursor: pointer;
-  touch-action: manipulation;
-  padding: 8px 10px;
-}
-
-.dashboard-link:active {
-  color: var(--emerald-bright);
 }
 
 .coords {
@@ -893,4 +885,44 @@ body {
   text-align: left;
   margin-bottom: 20px;
   line-height: 1.5;
+}
+
+/* ---------- ranking table (name / citizens / GDP / DCL) ---------- */
+
+.dashboard__table-head {
+  display: grid;
+  grid-template-columns: 1.8fr 0.6fr 0.9fr 0.7fr;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--mist);
+  padding: 0 4px 6px;
+  border-bottom: 1px solid rgba(234, 247, 238, 0.1);
+}
+
+.dashboard__table-row {
+  display: grid !important;
+  grid-template-columns: 1.8fr 0.6fr 0.9fr 0.7fr;
+  gap: 6px;
+  align-items: center;
+}
+
+.dashboard__table-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- architect-only admin panel ---------- */
+
+.dashboard__admin {
+  width: 100%;
+  border-radius: 16px;
+  border: 1px solid rgba(232, 106, 92, 0.3);
+  background: rgba(232, 106, 92, 0.06);
+  padding: 16px;
+  margin-bottom: 22px;
+  text-align: left;
 }
