@@ -48,6 +48,12 @@
 
 const ARCHITECT_TELEGRAM_ID = '220073523'; // @Nickbv
 
+// Меняется при каждой новой версии — способ проверить в браузере, какой
+// код реально обслуживает ваш .../exec прямо сейчас (см. doGet action=version
+// ниже). Откройте .../exec?action=version — если видите этот текст, значит
+// текущая версия действительно опубликована и живая.
+const SCRIPT_VERSION = '2026-07-13 · roles+gdp+dcl+queue';
+
 const SHEET_NAME = 'Реестр городов';
 const METRICS_SHEET_NAME = 'Города — метрики';
 
@@ -467,6 +473,7 @@ function doGet(e) {
   try {
     const action = (e.parameter && e.parameter.action) || 'stats';
 
+    if (action === 'version') return jsonOutput_({ ok: true, version: SCRIPT_VERSION, now: new Date().toISOString() });
     if (action === 'checkConfig') return handleCheckConfig_(e);
     if (action === 'stats') return handleStats_(e);
     if (action === 'myProfile') return handleMyProfile_(e);
@@ -678,4 +685,51 @@ function adminAssignFirstMayorsIfMissing() {
 
   Logger.log('Назначено мэров: ' + assignedCount);
   return assignedCount;
+}
+
+/**
+ * Удаляет ПОВТОРНЫЕ строки одного и того же Telegram ID в ОДНОМ и том же
+ * городе (тот же код конфигурации) — это чистый мусор от повторных нажатий
+ * "Присоединиться" (например, при неоднократном прохождении анкеты с теми
+ * же ответами), а не осмысленная история переездов между городами, поэтому
+ * лишние строки именно УДАЛЯЮТСЯ, а не помечаются "Покинул" — в отличие от
+ * adminCleanupDuplicateActiveCities, которая разводит по РАЗНЫМ городам и
+ * сохраняет историю. Оставляет самую раннюю запись (настоящий момент
+ * присоединения), остальные удаляет целиком.
+ *
+ * Именно эта функция нужна, чтобы поправить, например, случай, когда один
+ * человек по ошибке присоединился к одному городу много раз подряд и
+ * дашборд считает его за N разных жителей.
+ */
+function adminMergeDuplicateSameCityJoins() {
+  const sheet = getSheet_();
+  const rows = getAllRows_(sheet);
+
+  const byKey = {};
+  rows.forEach((row, i) => {
+    if (!isActiveRow_(row)) return;
+    const id = String(row[COL.TELEGRAM_ID] || '').trim();
+    const code = String(row[COL.CODE] || '').trim();
+    if (!id || !code) return;
+    const key = id + '::' + code;
+    if (!byKey[key]) byKey[key] = [];
+    byKey[key].push({ row, i });
+  });
+
+  const sheetRowsToDelete = [];
+  Object.keys(byKey).forEach((key) => {
+    const entries = byKey[key];
+    if (entries.length <= 1) return;
+    entries.sort((a, b) => new Date(a.row[COL.TIMESTAMP]) - new Date(b.row[COL.TIMESTAMP]));
+    for (let k = 1; k < entries.length; k++) {
+      sheetRowsToDelete.push(entries[k].i + 2); // номер строки листа (с учётом заголовка)
+    }
+  });
+
+  // Удаляем снизу вверх, чтобы номера строк не съезжали по ходу удаления.
+  sheetRowsToDelete.sort((a, b) => b - a);
+  sheetRowsToDelete.forEach((sheetRow) => sheet.deleteRow(sheetRow));
+
+  Logger.log('Удалено повторных строк (тот же человек, тот же город): ' + sheetRowsToDelete.length);
+  return sheetRowsToDelete.length;
 }

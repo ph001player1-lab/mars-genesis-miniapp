@@ -23,7 +23,7 @@
 // на реальных данных). Если когда-нибудь будете разворачивать скрипт заново
 // НЕ через "Управление развёртываниями → новая версия", а через полностью
 // новое развёртывание — URL изменится, тогда обновите его здесь.
-const CITY_REGISTRY_ENDPOINT = 'https://script.google.com/macros/s/AKfycbzEOzD2gRocmEqNF-40Y0neP-wl20Jlhks9HSJ71Ke-Wa6iPLPnhg2LWYcdoH1CYNCOeg/exec';
+const CITY_REGISTRY_ENDPOINT = 'https://script.google.com/macros/s/AKfycbwaxCdCZ_3fyzg7qNRKDSHRrQS-vZTrharZekzt1439pf-8vLJNz9NdCw1UWDrnrDF3mQ/exec';
 
 const TOTAL_CONFIGURATIONS = 30240; // 5 × 4 × 6 × 6 × 6 × 7 — см. книгу
 
@@ -474,6 +474,16 @@ function renderAnalyzing() {
 function checkConfigurationAndProceed() {
   const code = getConfigCode();
   state.configCode = code;
+
+  // Если человек проходит анкету заново с теми же ответами, что и его
+  // нынешний активный город — не гоняем через экран "присоединиться",
+  // это просто их собственный город. (Сервер всё равно идемпотентен и
+  // не задвоит запись, но так честнее и понятнее пользователю.)
+  if (myProfileState.activeCity && myProfileState.activeCity.code === code) {
+    state.cityName = myProfileState.activeCity.name;
+    renderResult(myProfileState.activeCity.name, myProfileState.activeCity.citizens, null, code);
+    return;
+  }
 
   checkConfiguration(code)
     .then((res) => {
