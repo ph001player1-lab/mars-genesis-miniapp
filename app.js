@@ -23,7 +23,7 @@
 // на реальных данных). Если когда-нибудь будете разворачивать скрипт заново
 // НЕ через "Управление развёртываниями → новая версия", а через полностью
 // новое развёртывание — URL изменится, тогда обновите его здесь.
-const CITY_REGISTRY_ENDPOINT = 'https://script.google.com/macros/s/AKfycbzEOzD2gRocmEqNF-40Y0neP-wl20Jlhks9HSJ71Ke-Wa6iPLPnhg2LWYcdoH1CYNCOeg/exec';
+const CITY_REGISTRY_ENDPOINT = 'https://script.google.com/macros/s/AKfycbwaxCdCZ_3fyzg7qNRKDSHRrQS-vZTrharZekzt1439pf-8vLJNz9NdCw1UWDrnrDF3mQ/exec';
 
 const TOTAL_CONFIGURATIONS = 30240; // 5 × 4 × 6 × 6 × 6 × 7 — см. книгу
 
@@ -834,6 +834,16 @@ function renderResult(cityName, citizenNumber, totalCities, code) {
 
     document.getElementById('btn-city-chat').addEventListener('click', () => {
       window.MarsTelegram.tgHapticImpact('medium');
+
+      const knownChat = myProfileState.activeCity && myProfileState.activeCity.code === resolvedCode
+        ? myProfileState.activeCity.chat
+        : '';
+
+      if (knownChat) {
+        window.MarsTelegram.tgOpenTelegramLink(knownChat);
+        return;
+      }
+
       const user = window.MarsTelegram.tgGetUser();
       const who = user
         ? (user.username ? `@${user.username}` : [user.first_name, user.last_name].filter(Boolean).join(' ')) + (user.id ? ` (id: ${user.id})` : '')
@@ -1288,7 +1298,11 @@ function renderCityDetail(city, dashboardOpts) {
       </div>
       <div class="config-summary__row">
         <span class="config-summary__row-label">Мэр</span>
-        <span class="config-summary__row-value">${city.mayor ? escapeHtml(city.mayor) : '— нет мэра —'}</span>
+        <span class="config-summary__row-value">${
+          city.mayor
+            ? `${escapeHtml(city.mayor)}${city.mayorUsername ? ` · <a href="#" id="city-detail-mayor-link" style="color:var(--emerald-bright);">@${escapeHtml(city.mayorUsername)}</a>` : ''}`
+            : '— нет мэра —'
+        }</span>
       </div>
       ${city.chat ? `
       <div class="config-summary__row">
@@ -1315,6 +1329,15 @@ function renderCityDetail(city, dashboardOpts) {
         e.preventDefault();
         window.MarsTelegram.tgHapticImpact('light');
         window.MarsTelegram.tgOpenTelegramLink(city.chat);
+      });
+    }
+
+    const mayorLink = document.getElementById('city-detail-mayor-link');
+    if (mayorLink) {
+      mayorLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        window.MarsTelegram.tgHapticImpact('light');
+        window.MarsTelegram.tgOpenTelegramLink(`https://t.me/${city.mayorUsername}`);
       });
     }
 
