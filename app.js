@@ -23,7 +23,7 @@
 // на реальных данных). Если когда-нибудь будете разворачивать скрипт заново
 // НЕ через "Управление развёртываниями → новая версия", а через полностью
 // новое развёртывание — URL изменится, тогда обновите его здесь.
-const CITY_REGISTRY_ENDPOINT = 'https://script.google.com/macros/s/AKfycbwaxCdCZ_3fyzg7qNRKDSHRrQS-vZTrharZekzt1439pf-8vLJNz9NdCw1UWDrnrDF3mQ/exec';
+const CITY_REGISTRY_ENDPOINT = 'https://script.google.com/macros/s/AKfycbzEOzD2gRocmEqNF-40Y0neP-wl20Jlhks9HSJ71Ke-Wa6iPLPnhg2LWYcdoH1CYNCOeg/exec';
 
 const TOTAL_CONFIGURATIONS = 30240; // 5 × 4 × 6 × 6 × 6 × 7 — см. книгу
 
