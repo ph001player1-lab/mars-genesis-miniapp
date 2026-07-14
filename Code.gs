@@ -52,7 +52,7 @@ const ARCHITECT_TELEGRAM_ID = '220073523'; // @Nickbv
 // код реально обслуживает ваш .../exec прямо сейчас (см. doGet action=version
 // ниже). Откройте .../exec?action=version — если видите этот текст, значит
 // текущая версия действительно опубликована и живая.
-const SCRIPT_VERSION = '2026-07-14b · register/join via GET (fix POST body loss)';
+const SCRIPT_VERSION = '2026-07-13 · roles+gdp+dcl+queue';
 
 const SHEET_NAME = 'Реестр городов';
 const METRICS_SHEET_NAME = 'Города — метрики';
@@ -197,23 +197,6 @@ function findActiveRowsByTelegramId_(rows, telegramId) {
   return rows
     .map((row, i) => ({ row, i }))
     .filter(({ row }) => isActiveRow_(row) && String(row[COL.TELEGRAM_ID] || '').trim() === normalized);
-}
-
-/**
- * Ссылка на чат города могла быть вписана в ЛЮБУЮ строку этого города (не
- * обязательно в ту, которую завёл конкретный запрашивающий житель) — ищем
- * по ВСЕМ строкам с этим кодом, а не только по одной конкретной строке.
- * Именно отсутствие этого поиска было причиной, когда житель не видел
- * уже вписанную вами ссылку на чат своего города в личном кабинете.
- */
-function findChatForCode_(rows, code) {
-  const normalized = String(code).trim().toUpperCase();
-  for (let i = 0; i < rows.length; i++) {
-    if (String(rows[i][COL.CODE] || '').trim().toUpperCase() === normalized && rows[i][COL.CHAT]) {
-      return rows[i][COL.CHAT];
-    }
-  }
-  return '';
 }
 
 function jsonOutput_(obj) {
@@ -441,7 +424,7 @@ function handleJoin_(payload) {
         ok: true,
         city: alreadyHere.row[COL.CITY],
         code: code,
-        chat: findChatForCode_(rows, code),
+        chat: alreadyHere.row[COL.CHAT] || '',
         citizenNumber: existing.length,
         totalCities: aggregateActiveCities_(rows).length,
       });
@@ -501,46 +484,11 @@ function doGet(e) {
     if (action === 'checkConfig') return handleCheckConfig_(e);
     if (action === 'stats') return handleStats_(e);
     if (action === 'myProfile') return handleMyProfile_(e);
-    // register/join через GET — см. комментарий у payloadFromGetParams_ ниже
-    // о том, почему запись сделана через GET, а не POST.
-    if (action === 'register') return handleRegister_(payloadFromGetParams_(e));
-    if (action === 'join') return handleJoin_(payloadFromGetParams_(e));
 
     return jsonOutput_({ ok: false, error: 'unknown_action' });
   } catch (err) {
     return jsonOutput_({ ok: false, error: 'server_error', message: String(err) });
   }
-}
-
-/**
- * Apps Script Web App при обращении к .../exec отвечает редиректом на
- * script.googleusercontent.com. По спецификации fetch при редиректе
- * 301/302/303 браузер молча превращает POST в GET и ОБНУЛЯЕТ тело запроса
- * — в некоторых мобильных WebView (в т.ч., судя по всему, у части
- * пользователей Telegram) это реально происходит и ломает регистрацию:
- * запрос уходит, но сервер получает уже пустой GET без данных. GET же при
- * таком редиректе остаётся GET и ничего не теряет — поэтому запись города
- * (register/join) намеренно сделана через GET с параметрами в самой
- * ссылке, а не через POST с телом. Это менее "красиво" с точки зрения
- * REST, но заметно надёжнее именно в этом окружении.
- */
-function payloadFromGetParams_(e) {
-  const p = e.parameter || {};
-  return {
-    city: p.city || '',
-    code: p.code || '',
-    telegramUsername: p.telegramUsername || '',
-    telegramId: p.telegramId || '',
-    telegramName: p.telegramName || '',
-    answers: {
-      climate: p.climate || '',
-      intimacy: p.intimacy || '',
-      lifestyle: p.lifestyle || '',
-      society: p.society || '',
-      economy: p.economy || '',
-      worldview: p.worldview || '',
-    },
-  };
 }
 
 function handleCheckConfig_(e) {
@@ -646,7 +594,7 @@ function handleMyProfile_(e) {
     activeCity = {
       name: activeEntry.row[COL.CITY],
       code: code,
-      chat: findChatForCode_(rows, code),
+      chat: activeEntry.row[COL.CHAT] || '',
       citizens: citizens,
     };
   }
@@ -661,7 +609,7 @@ function handleMyProfile_(e) {
     pastCities.push({
       name: row[COL.CITY],
       code: code,
-      chat: findChatForCode_(rows, code),
+      chat: row[COL.CHAT] || '',
       leftDate: row[COL.LEFT_DATE] || '',
     });
   });

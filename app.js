@@ -23,7 +23,7 @@
 // на реальных данных). Если когда-нибудь будете разворачивать скрипт заново
 // НЕ через "Управление развёртываниями → новая версия", а через полностью
 // новое развёртывание — URL изменится, тогда обновите его здесь.
-const CITY_REGISTRY_ENDPOINT = 'https://script.google.com/macros/s/AKfycbzEOzD2gRocmEqNF-40Y0neP-wl20Jlhks9HSJ71Ke-Wa6iPLPnhg2LWYcdoH1CYNCOeg/exec';
+const CITY_REGISTRY_ENDPOINT = 'https://script.google.com/macros/s/AKfycbwaxCdCZ_3fyzg7qNRKDSHRrQS-vZTrharZekzt1439pf-8vLJNz9NdCw1UWDrnrDF3mQ/exec';
 
 const TOTAL_CONFIGURATIONS = 30240; // 5 × 4 × 6 × 6 × 6 × 7 — см. книгу
 
@@ -590,13 +590,13 @@ function renderJoinExisting(code, cityName, citizens) {
 
 function joinCity(code) {
   const user = window.MarsTelegram.tgGetUser();
-  const params = new URLSearchParams({
+  const payload = {
     action: 'join',
     code: code,
     telegramUsername: user && user.username ? `@${user.username}` : '',
     telegramId: user && user.id ? String(user.id) : '',
     telegramName: user ? [user.first_name, user.last_name].filter(Boolean).join(' ') : '',
-  });
+  };
 
   if (!CITY_REGISTRY_ENDPOINT) {
     console.warn('[app.js] CITY_REGISTRY_ENDPOINT не задан — присоединение работает в демо-режиме и никуда не сохраняется.');
@@ -605,11 +605,11 @@ function joinCity(code) {
     });
   }
 
-  // GET, а не POST: у Apps Script Web App редирект .../exec → googleusercontent
-  // на некоторых мобильных WebView превращает POST в GET и теряет тело
-  // запроса (см. подробный комментарий в Code.gs у payloadFromGetParams_).
-  // GET такому не подвержен.
-  return fetch(`${CITY_REGISTRY_ENDPOINT}?${params.toString()}`).then((r) => r.json());
+  return fetch(CITY_REGISTRY_ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(payload),
+  }).then((r) => r.json());
 }
 
 /* ======================================================================
@@ -720,26 +720,19 @@ function handleCitySubmit(input, submitBtn) {
 function registerCity(cityName) {
   const user = window.MarsTelegram.tgGetUser();
   const code = state.configCode || getConfigCode();
-  const answers = QUESTIONS.reduce((acc, q) => {
-    const opt = OPTION_LABELS[q.id][state.answers[q.id]];
-    acc[q.id] = opt ? opt.label : '';
-    return acc;
-  }, {});
-
-  const params = new URLSearchParams({
+  const payload = {
     action: 'register',
     city: cityName,
     code: code,
     telegramUsername: user && user.username ? `@${user.username}` : '',
     telegramId: user && user.id ? String(user.id) : '',
     telegramName: user ? [user.first_name, user.last_name].filter(Boolean).join(' ') : '',
-    climate: answers.climate || '',
-    intimacy: answers.intimacy || '',
-    lifestyle: answers.lifestyle || '',
-    society: answers.society || '',
-    economy: answers.economy || '',
-    worldview: answers.worldview || '',
-  });
+    answers: QUESTIONS.reduce((acc, q) => {
+      const opt = OPTION_LABELS[q.id][state.answers[q.id]];
+      acc[q.id] = opt ? opt.label : '';
+      return acc;
+    }, {}),
+  };
 
   if (!CITY_REGISTRY_ENDPOINT) {
     console.warn('[app.js] CITY_REGISTRY_ENDPOINT не задан — регистрация города работает в демо-режиме и никуда не сохраняется. См. Code.gs.');
@@ -748,11 +741,14 @@ function registerCity(cityName) {
     });
   }
 
-  // GET, а не POST: у Apps Script Web App редирект .../exec → googleusercontent
-  // на некоторых мобильных WebView превращает POST в GET и теряет тело
-  // запроса — именно так выглядела ошибка "Не удалось связаться с реестром"
-  // у части пользователей. Подробности — в Code.gs у payloadFromGetParams_.
-  return fetch(`${CITY_REGISTRY_ENDPOINT}?${params.toString()}`).then((r) => r.json());
+  // text/plain вместо application/json — так браузер не отправляет
+  // предварительный CORS preflight (OPTIONS), который Apps Script Web App
+  // не обрабатывает. На стороне Code.gs это обычный JSON.parse(e.postData.contents).
+  return fetch(CITY_REGISTRY_ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(payload),
+  }).then((r) => r.json());
 }
 
 /* ======================================================================
